@@ -12,6 +12,7 @@ import { DiagnosesPage } from './pages/Diagnoses';
 import { LaboratoryPage } from './pages/Laboratory';
 import { InventoryPage } from './pages/Inventory';
 import { Audits } from './pages/Audits';
+import { Verification } from './pages/Verification';
 import SalesList from './components/shared/sales';
 import Profile from './components/shared/Profile';
 
@@ -77,6 +78,11 @@ function App() {
             <Route path="audits" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <Audits />
+              </ProtectedRoute>
+            } />
+            <Route path="verification" element={
+              <ProtectedRoute allowedRoles={['admin', 'doctor']}>
+                <Verification />
               </ProtectedRoute>
             } />
             <Route path="profile" element={

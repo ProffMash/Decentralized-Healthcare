@@ -18,6 +18,7 @@ from django.db.models import Sum
 from .models import OnChainAudit
 from .serializers import OnChainAuditSerializer
 from rest_framework import mixins
+from .blockchain_service import store_record_hash
 
 # Create your views here.
 User = get_user_model()
@@ -33,6 +34,24 @@ class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all().order_by('-created_at')
     serializer_class = PatientSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        # Generate and store blockchain hash
+        try:
+            store_record_hash(instance, update_instance=True)
+        except Exception:
+            # Don't fail the request if blockchain hashing fails
+            pass
+    
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        # Regenerate blockchain hash on update
+        try:
+            store_record_hash(instance, update_instance=True)
+        except Exception:
+            # Don't fail the request if blockchain hashing fails
+            pass
     
     @action(detail=False, methods=['get'])
     def count(self, request):
@@ -63,6 +82,24 @@ class DiagnosisViewSet(viewsets.ModelViewSet):
     serializer_class = DiagnosisSerializer
     permission_classes = [permissions.IsAuthenticated]
     
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        # Generate and store blockchain hash
+        try:
+            store_record_hash(instance, update_instance=True)
+        except Exception:
+            # Don't fail the request if blockchain hashing fails
+            pass
+    
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        # Regenerate blockchain hash on update
+        try:
+            store_record_hash(instance, update_instance=True)
+        except Exception:
+            # Don't fail the request if blockchain hashing fails
+            pass
+    
     @action(detail=False, methods=['get'])
     def count(self, request):
         count = Diagnosis.objects.count()
@@ -84,6 +121,24 @@ class LabResultViewSet(viewsets.ModelViewSet):
     ).order_by('-created_at')
     serializer_class = LabResultSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        # Generate and store blockchain hash
+        try:
+            store_record_hash(instance, update_instance=True)
+        except Exception:
+            # Don't fail the request if blockchain hashing fails
+            pass
+    
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        # Regenerate blockchain hash on update
+        try:
+            store_record_hash(instance, update_instance=True)
+        except Exception:
+            # Don't fail the request if blockchain hashing fails
+            pass
 
 @method_decorator(cache_page(30), name='list')
 class SaleViewSet(viewsets.ModelViewSet):
@@ -195,16 +250,28 @@ class AuditsViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.Retri
             return Response({'detail': 'Not found'}, status=404)
 
         try:
-            from ..blockchain.web3_client import check_hash_on_chain
+            from ..blockchain.web3_client import check_hash_on_chain, Web3, RPC_URL
             on_chain = check_hash_on_chain(audit.record_hash)
-        except Exception:
+            
+            # Get blockchain details
+            w3 = Web3(Web3.HTTPProvider(RPC_URL))
+            if w3.is_connected():
+                current_block = w3.eth.block_number
+            else:
+                current_block = None
+        except Exception as e:
             on_chain = False
+            current_block = None
 
         return Response({
             'id': audit.id,
             'record_hash': audit.record_hash,
+            'record_cid': audit.record_cid,
             'tx_hash': audit.tx_hash,
             'on_chain': bool(on_chain),
+            'status': 'confirmed' if audit.tx_hash else 'pending',
+            'block_number': getattr(audit, 'block_number', None),
+            'created_at': audit.created_at,
         })
 
     @action(detail=True, methods=['post'])
@@ -306,6 +373,56 @@ class LoginView(APIView):
 def get_user_count(request):
     count = User.objects.count()
     return Response({"user_count": count})
+
+
+@api_view(['GET'])
+def blockchain_status(request):
+    """Endpoint to fetch blockchain network status and details."""
+    try:
+        from ..blockchain.web3_client import Web3, RPC_URL
+        
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        is_connected = w3.is_connected()
+        
+        if is_connected:
+            chain_id = w3.eth.chain_id
+            latest_block = w3.eth.block_number
+            gas_price = w3.eth.gas_price
+            
+            # Determine network name from chain ID
+            network_map = {
+                1: 'Ethereum Mainnet',
+                5: 'Goerli Testnet',
+                11155111: 'Sepolia Testnet',
+                31337: 'Hardhat',
+                1337: 'Ganache',
+            }
+            network = network_map.get(chain_id, f'Unknown Chain {chain_id}')
+            
+            return Response({
+                'connected': True,
+                'chain_id': chain_id,
+                'network': network,
+                'latest_block': latest_block,
+                'gas_price': str(w3.from_wei(gas_price, 'gwei')),
+            }, status=200)
+        else:
+            return Response({
+                'connected': False,
+                'chain_id': None,
+                'network': 'Disconnected',
+                'latest_block': None,
+                'gas_price': None,
+            }, status=200)
+    except Exception as e:
+        return Response({
+            'connected': False,
+            'chain_id': None,
+            'network': 'Error',
+            'latest_block': None,
+            'gas_price': None,
+            'error': str(e),
+        }, status=500)
 
 
 # Note: revenue endpoints implemented as actions on SaleViewSet (routes registered in urls.py)

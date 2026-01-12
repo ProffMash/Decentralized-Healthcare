@@ -21,6 +21,8 @@ export interface Diagnosis {
   diagnosis: string;
   prescribed_medicines: PrescribedMedicine[];
   additional_notes?: string | null;
+  blockchain_hash?: string;
+  blockchain_tx_hash?: string;
   created_at: string;
 }
 

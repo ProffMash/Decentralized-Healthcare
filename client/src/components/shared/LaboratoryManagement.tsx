@@ -1,5 +1,3 @@
-import { sendRecordToAudit } from '../../Api/auditApi';
-import { storeRecordAsString } from '../../utils/auditUtils';
 import React, { useState, useMemo, useEffect } from 'react';
 import { isRole } from '../../utils/roleUtils';
 import { Plus, Search, Edit, Download, Clock, CheckCircle, User, Trash2 } from 'lucide-react';
@@ -134,13 +132,6 @@ export const Laboratory: React.FC = () => {
     technician: '',
     notes: ''
   });
-
-  // Store lab result as string and send to audit/blockchain
-  const storeLabResultAsString = (result: any, id: string | number = 'new') => {
-    const resultString = storeRecordAsString(result);
-    sendRecordToAudit('lab_result', id, resultString).catch(() => {});
-    return resultString;
-  };
 
   // Helper to normalize various server/legacy shapes into string[] for `values`
   const normalizeToArray = (raw: any): string[] => {
@@ -460,11 +451,14 @@ export const Laboratory: React.FC = () => {
         // Create order immediately (no separate input modal) — tests are taken from selected checkboxes
         const payload: any = {
           patient: Number(orderFormData.patientId),
-          doctor: orderFormData.doctorId ? Number(orderFormData.doctorId) : null,
           // send tests as an array of test ids/keys (backend may accept array or string; prefer array)
           tests: testIds,
           status: orderFormData.status || 'pending'
         };
+        // Only include doctor if provided
+        if (orderFormData.doctorId) {
+          payload.doctor = Number(orderFormData.doctorId);
+        }
         apiCreateLabOrder(payload as any)
           .then((resp) => {
             let createdTestIds: string[] = [];
@@ -630,12 +624,6 @@ export const Laboratory: React.FC = () => {
               completedAt: (resp as any).created_at ?? resultDataTemplate.completedAt,
             } as any;
             updateLabResult(String(editingItem.id), normalized);
-            // send audit record for this updated lab result
-            try {
-              storeLabResultAsString(normalized, normalized.id);
-            } catch (e) {
-              // swallow audit errors
-            }
           })
           .catch((err) => {
             console.error('Failed to update lab result', err);
@@ -664,15 +652,11 @@ export const Laboratory: React.FC = () => {
                 patientName: createdOrder ? ((createdOrder as any).patientName ?? (createdOrder as any).patient_name ?? '') : '',
                 values: normalizeToArray((resp as any).result ?? resultDataTemplate.values),
                 pairs: normalizePairs((resp as any).result ?? resultDataTemplate.values, createdOrder ? (createdOrder.testIds ?? null) : ((resp as any).test_name ? [ (resp as any).test_name ] : null)),
+                blockchain_hash: (resp as any).blockchain_hash,
+                blockchainHash: (resp as any).blockchain_hash,
                 completedAt: (resp as any).created_at ?? resultDataTemplate.completedAt,
               } as any;
               addLabResult(normalized as LabResult);
-              // send audit record for newly created lab result
-              try {
-                storeLabResultAsString(normalized, normalized.id);
-              } catch (e) {
-                // ignore audit failures
-              }
             })
             .catch((err) => {
               console.error('Failed to create lab result', err);
@@ -876,11 +860,14 @@ export const Laboratory: React.FC = () => {
 
     const apiPayload: any = {
       patient: Number(payload.patientId),
-      doctor: payload.doctorId ? Number(payload.doctorId) : null,
       // send tests as array of ids/keys
       tests: testIds,
       status: payload.status || payload.priority || 'pending'
     } as any;
+    // Only include doctor if provided
+    if (payload.doctorId) {
+      apiPayload.doctor = Number(payload.doctorId);
+    }
 
     // include structured test details when available (sent as JSON string to backend if it understands it)
     if (payload.testDetails) {
@@ -995,14 +982,11 @@ export const Laboratory: React.FC = () => {
           patientName: createdOrder ? ((createdOrder as any).patientName ?? (createdOrder as any).patient_name ?? '') : '',
           values: normalizeToArray((resp as any).result ?? resultArray),
           pairs: normalizePairs((resp as any).result ?? resultArray, createdOrder ? (createdOrder.testIds ?? null) : null),
+          blockchain_hash: (resp as any).blockchain_hash,
+          blockchainHash: (resp as any).blockchain_hash,
           completedAt: (resp as any).created_at ?? new Date().toISOString(),
         } as any;
         addLabResult(normalized as LabResult);
-        try {
-          storeLabResultAsString(normalized, normalized.id);
-        } catch (e) {
-          // ignore audit failures
-        }
       })
       .catch((err) => {
         console.error('Failed to create lab result for tests', err);
@@ -1329,6 +1313,25 @@ export const Laboratory: React.FC = () => {
                       render: (value: string) => formatDate(value)
                     },
                     {
+                      key: 'blockchainHash',
+                      header: 'Blockchain Hash',
+                      render: (_: any, row: any) => {
+                        const latestResult = (row.items && row.items.length) ? row.items[row.items.length - 1] : null;
+                        const hash = latestResult ? (latestResult.blockchain_hash || (latestResult as any).blockchainHash) : null;
+                        return (
+                          <div className="max-w-xs">
+                            {hash ? (
+                              <p className="text-xs font-mono text-blue-600 dark:text-blue-400 truncate" title={hash}>
+                                {(hash as string).substring(0, 10)}...
+                              </p>
+                            ) : (
+                              <p className="text-xs text-gray-400">—</p>
+                            )}
+                          </div>
+                        );
+                      }
+                    },
+                    {
                       key: 'actions',
                       header: 'Actions',
                       render: (_: any, row: any) => (
@@ -1362,9 +1365,9 @@ export const Laboratory: React.FC = () => {
                       <div className="p-4 text-sm text-gray-500">No results</div>
                     ) : (
                       (groupModalItems || []).map((it: any) => (
-                        <div key={it.id} className="p-3 border rounded bg-white dark:bg-gray-800 flex items-center justify-between">
-                            <div>
-                              <div className="text-sm text-gray-500">
+                        <div key={it.id} className="p-3 border rounded bg-white dark:bg-gray-800">
+                            <div className="mb-3">
+                              <div className="text-sm text-gray-500 mb-2">
                                 {(it.pairs || []).length ? (
                                   <ul className="list-disc list-inside">
                                     {(it.pairs || []).map((p: any, i: number) => (
@@ -1376,6 +1379,21 @@ export const Laboratory: React.FC = () => {
                                 )}
                               </div>
                               <div className="text-xs text-gray-400">Date: {formatDate(it.completedAt)}</div>
+                              {(it.blockchain_hash || (it as any).blockchainHash) && (
+                                <div className="border-t pt-3 mt-3">
+                                  <p className="text-sm font-semibold mb-2">Blockchain Verification</p>
+                                  <div className="bg-blue-50 dark:bg-blue-900 p-3 rounded">
+                                    <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Record Hash</p>
+                                    <p className="text-xs text-blue-800 dark:text-blue-200 break-all font-mono">{(it.blockchain_hash || (it as any).blockchainHash)}</p>
+                                    {(it.blockchain_tx_hash || (it as any).blockchainTxHash) && (
+                                      <>
+                                        <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mt-2 mb-1">Transaction Hash</p>
+                                        <p className="text-xs text-blue-800 dark:text-blue-200 break-all font-mono">{(it.blockchain_tx_hash || (it as any).blockchainTxHash)}</p>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           <div className="flex space-x-2">
                             <Button size="small" variant="secondary" onClick={() => { setGroupModalOpen(false); handleOpenModal('result', it); }}>

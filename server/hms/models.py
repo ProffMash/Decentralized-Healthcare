@@ -104,6 +104,9 @@ class Patient(models.Model):
         ('not_paid', 'Not Paid'),
     ]
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS_CHOICES, default='not_paid')
+    # Blockchain hash fields for data integrity
+    blockchain_hash = models.CharField(max_length=66, null=True, blank=True, db_index=True, help_text='SHA-256 hash of patient record')
+    blockchain_tx_hash = models.CharField(max_length=100, null=True, blank=True, help_text='Transaction hash on blockchain')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self):
@@ -135,6 +138,9 @@ class Diagnosis(models.Model):
     diagnosis = models.TextField()
     prescribed_medicines = models.JSONField(default=list)
     additional_notes = models.TextField(null=True, blank=True)
+    # Blockchain hash fields for data integrity
+    blockchain_hash = models.CharField(max_length=66, null=True, blank=True, db_index=True, help_text='SHA-256 hash of diagnosis record')
+    blockchain_tx_hash = models.CharField(max_length=100, null=True, blank=True, help_text='Transaction hash on blockchain')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self):
@@ -150,7 +156,7 @@ class LabOders(models.Model):
     ]
 
     patient = models.ForeignKey('Patient', on_delete=models.CASCADE, related_name='laboratories')
-    doctor = models.ForeignKey('User', on_delete=models.CASCADE, related_name='laboratories')
+    doctor = models.ForeignKey('User', on_delete=models.CASCADE, related_name='laboratories', null=True, blank=True)
     # tests = models.TextField()
     tests = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=CHOICES, default='sample_collected')
@@ -162,6 +168,9 @@ class LabResults(models.Model):
     lab_order = models.ForeignKey('LabOders', on_delete=models.CASCADE, related_name='LabOrder')
     # result = models.TextField()
     result = models.JSONField(default=list, blank=True)
+    # Blockchain hash fields for data integrity
+    blockchain_hash = models.CharField(max_length=66, null=True, blank=True, db_index=True, help_text='SHA-256 hash of lab results record')
+    blockchain_tx_hash = models.CharField(max_length=100, null=True, blank=True, help_text='Transaction hash on blockchain')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     # also track updates
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
@@ -373,11 +382,13 @@ def _create_audit_for_instance(instance, tx_hash=None):
 
 
 # Attach post_save hooks to models we want audited. For now: Patient and Diagnosis.
-@receiver(post_save, sender=Patient)
-def audit_patient_on_save(sender, instance, created, **kwargs):
-    _create_audit_for_instance(instance)
+# NOTE: These signals are DISABLED because hashing is now handled in ViewSets
+# This prevents duplicate hash generation. Keep code for reference/rollback.
+# @receiver(post_save, sender=Patient)
+# def audit_patient_on_save(sender, instance, created, **kwargs):
+#     _create_audit_for_instance(instance)
 
 
-@receiver(post_save, sender=Diagnosis)
-def audit_diagnosis_on_save(sender, instance, created, **kwargs):
-    _create_audit_for_instance(instance)
+# @receiver(post_save, sender=Diagnosis)
+# def audit_diagnosis_on_save(sender, instance, created, **kwargs):
+#     _create_audit_for_instance(instance)

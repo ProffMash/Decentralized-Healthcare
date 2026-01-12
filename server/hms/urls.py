@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import MedicineViewSet, RegisterView, LoginView, UserViewSet, PatientViewSet, DiagnosisViewSet, AppointmentViewSet, SaleViewSet, LabOrderViewSet, LabResultViewSet
-from .views import AuditsViewSet
+from .views import AuditsViewSet, blockchain_status, get_user_count
 
 router = DefaultRouter()
 router.register(r'medicines', MedicineViewSet, basename='medicine')
@@ -18,6 +18,8 @@ urlpatterns = [
     path('', include(router.urls)),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/login/', LoginView.as_view(), name='login'),
+    path('blockchain/status/', blockchain_status, name='blockchain-status'),
+    path('users/count/', get_user_count, name='user-count'),
     path('patients/count/', PatientViewSet.as_view({'get': 'count'}), name='patient-count'),
     path('medicines/count/', MedicineViewSet.as_view({'get': 'count'}), name='medicine-count'),
     path('medicines/low_stock/', MedicineViewSet.as_view({'get': 'low_stock'}), name='low-stock-medicines'),

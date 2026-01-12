@@ -3,6 +3,15 @@ import json
 from pathlib import Path
 from web3 import Web3
 
+# Try to use eth-tester for in-memory blockchain
+try:
+    from eth_tester import EthereumTester
+    from web3.providers.eth_tester import EthereumTesterProvider
+    USE_ETH_TESTER = True
+except Exception:
+    USE_ETH_TESTER = False
+    print("eth-tester not available, falling back to HTTP provider")
+
 # Import `geth_poa_middleware` with compatibility for web3.py v5 and v6.
 try:
     # v5 location
@@ -147,6 +156,31 @@ DEPLOYED_ADDRESS_FILE = _find_deployed_address_file()
 RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', 'http://127.0.0.1:8545')
 PRIVATE_KEY = os.environ.get('BLOCKCHAIN_PRIVATE_KEY')
 
+# Initialize Web3 instance (in-memory if eth-tester available, else HTTP)
+def _init_w3():
+    """Initialize Web3 with eth-tester for in-memory blockchain or HTTP provider."""
+    if USE_ETH_TESTER:
+        try:
+            eth_tester = EthereumTester()
+            w3 = Web3(EthereumTesterProvider(eth_tester))
+            # Auto-mine blocks immediately for eth-tester
+            return w3, True
+        except Exception as e:
+            print(f"Failed to initialize eth-tester: {e}, falling back to HTTP")
+            return Web3(Web3.HTTPProvider(RPC_URL)), False
+    else:
+        return Web3(Web3.HTTPProvider(RPC_URL)), False
+
+_w3_instance = None
+_using_eth_tester = False
+
+def get_w3():
+    """Get or create Web3 instance."""
+    global _w3_instance, _using_eth_tester
+    if _w3_instance is None:
+        _w3_instance, _using_eth_tester = _init_w3()
+    return _w3_instance
+
 
 def _load_contract(w3):
     if not DEPLOYED_ADDRESS_FILE.exists():
@@ -167,11 +201,11 @@ def send_hash_transaction(record_hash_hex: str):
 
     Returns transaction hash string on success or None if not configured.
     """
-    if not PRIVATE_KEY:
+    if not PRIVATE_KEY and not USE_ETH_TESTER:
         # Not configured to send transactions
         return None
 
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     # some local chains (Hardhat) don't need POA middleware, but harmless to add
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)

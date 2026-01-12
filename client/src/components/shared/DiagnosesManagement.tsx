@@ -1,5 +1,3 @@
-import { sendRecordToAudit } from '../../Api/auditApi';
-import { storeRecordAsString } from '../../utils/auditUtils';
 import React, { useState, useMemo } from 'react';
 import { isRole, roleIncludes } from '../../utils/roleUtils';
 import { Plus, Search, Edit, Download, User, Calendar, Stethoscope, Trash2 } from 'lucide-react';
@@ -30,6 +28,7 @@ export const Diagnoses: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDoctor, setFilterDoctor] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [viewingDiagnosis, setViewingDiagnosis] = useState<ApiDiagnosis | null>(null);
   const [editingDiagnosis, setEditingDiagnosis] = useState<ApiDiagnosis | null>(null);
   const [formData, setFormData] = useState<{
     patient: string;
@@ -147,9 +146,6 @@ export const Diagnoses: React.FC = () => {
       prescribed_medicines: formData.medications.map<PrescribedMedicine>(m => ({ name: m })),
       additional_notes: formData.notes || null
     };
-    // Store as string for audit or blockchain
-    const diagnosisString = storeRecordAsString(payload);
-    sendRecordToAudit('diagnosis', editingDiagnosis ? editingDiagnosis.id : 'new', diagnosisString).catch(() => {});
 
     try {
       if (editingDiagnosis) {
@@ -364,10 +360,33 @@ export const Diagnoses: React.FC = () => {
       render: (_: any, diagnosis: ApiDiagnosis) => formatDate(diagnosis.created_at)
     },
     {
+      key: 'blockchainHash',
+      header: 'Blockchain Hash',
+      render: (_: any, diagnosis: ApiDiagnosis) => (
+        <div className="max-w-xs">
+          {(diagnosis as any).blockchain_hash ? (
+            <p className="text-xs font-mono text-blue-600 dark:text-blue-400 truncate" title={(diagnosis as any).blockchain_hash}>
+              {((diagnosis as any).blockchain_hash as string).substring(0, 10)}...
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400">—</p>
+          )}
+        </div>
+      )
+    },
+    {
       key: 'actions',
       header: 'Actions',
       render: (_: any, diagnosis: ApiDiagnosis) => (
         <div className="flex space-x-2">
+          <Button
+            size="small"
+            variant="secondary"
+            onClick={() => setViewingDiagnosis(diagnosis)}
+            leftIcon={<Search className="w-3 h-3" />}
+          >
+            View
+          </Button>
           <Button
             size="small"
             variant="secondary"
@@ -612,6 +631,91 @@ export const Diagnoses: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* View Diagnosis Modal */}
+      <Modal
+        isOpen={!!viewingDiagnosis}
+        onClose={() => setViewingDiagnosis(null)}
+        title="Diagnosis Details"
+        size="large"
+      >
+        {viewingDiagnosis && (
+          <div className="space-y-4 text-sm">
+            <div>
+              <p className="text-sm font-semibold">Date</p>
+              <p className="text-sm">{formatDate(viewingDiagnosis.created_at)}</p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Patient</p>
+              <p className="text-sm">
+                {patients.find(p => String(p.id) === String(viewingDiagnosis.patient)) 
+                  ? `${patients.find(p => String(p.id) === String(viewingDiagnosis.patient))?.firstName} ${patients.find(p => String(p.id) === String(viewingDiagnosis.patient))?.lastName}`
+                  : 'Unknown'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Doctor</p>
+              <p className="text-sm">
+                {staff.find(s => String(s.id) === String(viewingDiagnosis.doctor))
+                  ? formatPersonName(staff.find(s => String(s.id) === String(viewingDiagnosis.doctor))!, 'Dr.')
+                  : 'Unknown'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Symptoms</p>
+              <p className="text-sm whitespace-pre-wrap">{viewingDiagnosis.symptoms}</p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Diagnosis</p>
+              <p className="text-sm whitespace-pre-wrap">{viewingDiagnosis.diagnosis}</p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Treatment Plan</p>
+              <p className="text-sm whitespace-pre-wrap">{viewingDiagnosis.treatment_plan || 'N/A'}</p>
+            </div>
+            {(viewingDiagnosis.prescribed_medicines && viewingDiagnosis.prescribed_medicines.length > 0) && (
+              <div>
+                <p className="text-sm font-semibold">Prescribed Medicines</p>
+                <ul className="text-sm space-y-1">
+                  {viewingDiagnosis.prescribed_medicines.map((med, idx) => {
+                    const medObj = typeof med === 'string' ? { name: med } : med;
+                    return (
+                      <li key={idx} className="ml-4">
+                        • {medObj.name}
+                        {medObj.dosage && ` - ${medObj.dosage}`}
+                        {medObj.dose && ` - ${medObj.dose}`}
+                        {medObj.frequency && ` - ${medObj.frequency}`}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            <div>
+              <p className="text-sm font-semibold">Additional Notes</p>
+              <p className="text-sm">{viewingDiagnosis.additional_notes || 'N/A'}</p>
+            </div>
+            {(viewingDiagnosis as any).blockchain_hash && (
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-semibold mb-2">Blockchain Verification</p>
+                <div className="bg-blue-50 dark:bg-blue-900 p-3 rounded">
+                  <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Record Hash</p>
+                  <p className="text-xs text-blue-800 dark:text-blue-200 break-all font-mono">{(viewingDiagnosis as any).blockchain_hash}</p>
+                  {(viewingDiagnosis as any).blockchain_tx_hash && (
+                    <>
+                      <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mt-2 mb-1">Transaction Hash</p>
+                      <p className="text-xs text-blue-800 dark:text-blue-200 break-all font-mono">{(viewingDiagnosis as any).blockchain_tx_hash}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end pt-4">
+              <Button onClick={() => setViewingDiagnosis(null)} variant="secondary">Close</Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

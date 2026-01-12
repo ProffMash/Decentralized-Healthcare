@@ -18,6 +18,7 @@ class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         # include payment_status so clients can read/update payment state
+        # include blockchain hash fields for integrity verification
         fields = '__all__'
 
 
@@ -50,6 +51,8 @@ class DiagnosisSerializer(serializers.ModelSerializer):
             'diagnosis',
             'prescribed_medicines',
             'additional_notes',
+            'blockchain_hash',
+            'blockchain_tx_hash',
             'created_at',
         ]
 
@@ -136,6 +139,8 @@ class LabResultSerializer(serializers.ModelSerializer):
             'lab_order',        # accepts PK on write
             'lab_order_detail', # nested representation on read
             'result',
+            'blockchain_hash',
+            'blockchain_tx_hash',
             'created_at',
             'updated_at',
         ]

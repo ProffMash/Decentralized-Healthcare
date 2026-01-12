@@ -1,5 +1,3 @@
-import { sendRecordToAudit } from '../../Api/auditApi';
-import { storeRecordAsString } from '../../utils/auditUtils';
 import React, { useState } from 'react';
 import { Plus, Search, Edit, Trash2, Download } from 'lucide-react';
 import { useHospitalStore } from '../../store/hospitalStore';
@@ -162,10 +160,6 @@ export const PatientManagement: React.FC = () => {
         Object.entries(payload).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
       );
 
-      // Store as string for audit or blockchain
-      const patientString = storeRecordAsString(patchPayload);
-      sendRecordToAudit('patient', editingPatient.id, patientString).catch(() => {});
-
       console.debug('PATCH payload', patchPayload);
       apiUpdatePatient(Number(editingPatient.id), patchPayload)
         .then(() => {
@@ -195,11 +189,6 @@ export const PatientManagement: React.FC = () => {
         Object.entries(payload).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
       );
 
-      // Store as string for audit or blockchain
-      const patientString = storeRecordAsString(createPayload);
-      // The new patient won't have an id yet, so use a placeholder or let the backend assign
-      sendRecordToAudit('patient', 'new', patientString).catch(() => {});
-
       console.debug('CREATE payload', createPayload);
       apiCreatePatient(createPayload as any)
         .then((res) => {
@@ -218,6 +207,8 @@ export const PatientManagement: React.FC = () => {
             emergencyRelationship: res.emergency_contact_relationship || 'Not specified',
             medicalHistory: res.medical_history || undefined,
             paymentStatus: (res as any).payment_status ?? 'not_paid',
+            blockchainHash: (res as any).blockchain_hash,
+            blockchainTxHash: (res as any).blockchain_tx_hash,
             createdAt: res.created_at,
             updatedAt: res.created_at,
           };
@@ -281,6 +272,8 @@ export const PatientManagement: React.FC = () => {
   medicalHistory: p.medical_history || undefined,
   // map backend payment_status to UI-friendly camelCase property
   paymentStatus: (p as any).payment_status ?? 'not_paid',
+  blockchainHash: (p as any).blockchain_hash,
+  blockchainTxHash: (p as any).blockchain_tx_hash,
       createdAt: p.created_at,
       updatedAt: p.created_at,
     });
@@ -371,6 +364,21 @@ export const PatientManagement: React.FC = () => {
           <span className={`px-2 py-1 rounded text-xs ${((patient as any).paymentStatus === 'paid') ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
             {((patient as any).paymentStatus === 'paid') ? 'Paid' : 'Not paid'}
           </span>
+        </div>
+      )
+    },
+    {
+      key: 'blockchainHash',
+      header: 'Blockchain Hash',
+      render: (_: any, patient: Patient) => (
+        <div className="max-w-xs">
+          {patient.blockchainHash ? (
+            <p className="text-xs font-mono text-blue-600 dark:text-blue-400 truncate" title={patient.blockchainHash}>
+              {patient.blockchainHash.substring(0, 10)}...
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400">—</p>
+          )}
         </div>
       )
     },
@@ -661,6 +669,21 @@ export const PatientManagement: React.FC = () => {
                 <p className="text-sm">{formatDate(viewingPatient.updatedAt)}</p>
               </div>
             </div>
+            {(viewingPatient as any).blockchainHash && (
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-semibold mb-2">Blockchain Verification</p>
+                <div className="bg-blue-50 dark:bg-blue-900 p-3 rounded">
+                  <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Record Hash</p>
+                  <p className="text-xs text-blue-800 dark:text-blue-200 break-all font-mono">{(viewingPatient as any).blockchainHash}</p>
+                  {(viewingPatient as any).blockchainTxHash && (
+                    <>
+                      <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mt-2 mb-1">Transaction Hash</p>
+                      <p className="text-xs text-blue-800 dark:text-blue-200 break-all font-mono">{(viewingPatient as any).blockchainTxHash}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex justify-end pt-4">
               <Button onClick={() => setViewingPatient(null)} variant="secondary">Close</Button>
             </div>

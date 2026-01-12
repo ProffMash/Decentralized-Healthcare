@@ -12,7 +12,8 @@ import {
   ShoppingCart,
   User,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Search
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import type { UserRole } from '../../types';
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { icon: TestTube, label: 'Laboratory', path: '/laboratory', roles: ['admin', 'doctor'] },
   { icon: Package, label: 'Medicine Inventory', path: '/inventory', roles: ['admin', 'pharmacist'] },
   { icon: Activity, label: 'Audits', path: '/audits', roles: ['admin'] },
+  { icon: Search, label: 'Verify Hash', path: '/verification', roles: ['admin', 'doctor'] },
   { icon: ShoppingCart, label: 'Sales', path: '/sales', roles: ['admin', 'pharmacist'] },
   { icon: User, label: 'Profile', path: '/profile', roles: ['admin', 'doctor', 'pharmacist', 'receptionist'] },
 ];

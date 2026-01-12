@@ -33,6 +33,8 @@ export interface Patient {
   allergies?: string;
   medicalHistory?: string;
   paymentStatus?: 'paid' | 'not_paid';
+  blockchainHash?: string; // SHA-256 hash of patient record
+  blockchainTxHash?: string; // Transaction hash on blockchain
   createdAt: string;
   updatedAt: string;
 }
@@ -82,6 +84,8 @@ export interface Diagnosis {
   followUpRequired: boolean;
   followUpDate?: string;
   notes?: string;
+  blockchainHash?: string; // SHA-256 hash of diagnosis record
+  blockchainTxHash?: string; // Transaction hash on blockchain
   createdAt: string;
   updatedAt: string;
 }
@@ -124,6 +128,8 @@ export interface LabResult {
   notes?: string;
   technician: string;
   reviewedBy?: string;
+  blockchainHash?: string; // SHA-256 hash of lab result record
+  blockchainTxHash?: string; // Transaction hash on blockchain
   completedAt: string;
 }
 

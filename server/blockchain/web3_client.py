@@ -173,17 +173,36 @@ def _init_w3():
 
 _w3_instance = None
 _using_eth_tester = False
+_eth_tester_account = None
 
 def get_w3():
     """Get or create Web3 instance."""
-    global _w3_instance, _using_eth_tester
+    global _w3_instance, _using_eth_tester, _eth_tester_account
     if _w3_instance is None:
         _w3_instance, _using_eth_tester = _init_w3()
+        # If using eth-tester, setup a default account
+        if _using_eth_tester:
+            try:
+                accounts = _w3_instance.eth.accounts
+                if accounts:
+                    _eth_tester_account = accounts[0]
+                    # Set as default sender
+                    _w3_instance.eth.default_account = _eth_tester_account
+            except Exception as e:
+                print(f"Warning: Failed to setup eth-tester account: {e}")
     return _w3_instance
+
+def get_eth_tester_account():
+    """Get the default eth-tester account for signing transactions."""
+    get_w3()  # Ensure initialized
+    return _eth_tester_account
 
 
 def _load_contract(w3):
-    if not DEPLOYED_ADDRESS_FILE.exists():
+    """Load contract - for eth-tester, return None as we use direct storage."""
+    if _using_eth_tester:
+        return None
+    if not DEPLOYED_ADDRESS_FILE or not DEPLOYED_ADDRESS_FILE.exists():
         return None
     addr = DEPLOYED_ADDRESS_FILE.read_text().strip()
     return w3.eth.contract(address=Web3.to_checksum_address(addr), abi=ABI)
@@ -197,7 +216,7 @@ def compute_record_hash(hex_prefixed_hash: str) -> bytes:
 
 
 def send_hash_transaction(record_hash_hex: str):
-    """Send the given 0x-prefixed SHA-256 hex (32 bytes) to the on-chain contract.
+    """Send the given 0x-prefixed SHA-256 hex (32 bytes) to the blockchain.
 
     Returns transaction hash string on success or None if not configured.
     """
@@ -206,7 +225,33 @@ def send_hash_transaction(record_hash_hex: str):
         return None
 
     w3 = get_w3()
-    # some local chains (Hardhat) don't need POA middleware, but harmless to add
+    
+    # For eth-tester, simulate a transaction
+    if USE_ETH_TESTER:
+        try:
+            acct_addr = get_eth_tester_account()
+            if not acct_addr:
+                return None
+            # Send a simple value transfer to simulate a blockchain transaction
+            # Build transaction with explicit gas limit to avoid estimation
+            tx = {
+                'from': acct_addr,
+                'to': acct_addr,  # Send to self
+                'value': 0,
+                'gas': 21000,  # Standard transaction gas
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(acct_addr),
+                'data': '0x' + record_hash_hex[2:] if record_hash_hex.startswith('0x') else record_hash_hex,
+            }
+            tx_hash = w3.eth.send_transaction(tx)
+            return w3.to_hex(tx_hash)
+        except Exception as e:
+            print(f"Error sending transaction to eth-tester: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    # For HTTP provider, use contract
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -217,12 +262,13 @@ def send_hash_transaction(record_hash_hex: str):
         return None
 
     acct = w3.eth.account.from_key(PRIVATE_KEY)
+    acct_addr = acct.address
+    nonce = w3.eth.get_transaction_count(acct_addr)
 
-    nonce = w3.eth.get_transaction_count(acct.address)
     record_bytes = compute_record_hash(record_hash_hex)
 
     tx = contract.functions.storeHash(record_bytes).build_transaction({
-        'from': acct.address,
+        'from': acct_addr,
         'nonce': nonce,
         'gas': 200000,
         'gasPrice': w3.eth.gas_price,
@@ -238,10 +284,10 @@ def send_record_transaction(record_data: str):
 
     Returns transaction hash string on success or None if not configured.
     """
-    if not PRIVATE_KEY:
+    if not PRIVATE_KEY and not USE_ETH_TESTER:
         return None
 
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -268,7 +314,7 @@ def send_record_transaction(record_data: str):
 
 def get_record_by_id(record_id_hex: str) -> str:
     """Fetch a stored record string by its 0x-prefixed bytes32 id. Returns empty string if missing."""
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     contract = _load_contract(w3)
     if contract is None:
         return ""
@@ -288,10 +334,10 @@ def send_record_and_get_id(record_data: str, wait_for_receipt: bool = True, time
 
     If `wait_for_receipt` is False the function returns (tx_hash_hex, None) immediately.
     """
-    if not PRIVATE_KEY:
+    if not PRIVATE_KEY and not USE_ETH_TESTER:
         return None, None
 
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -341,7 +387,7 @@ def send_record_and_get_id(record_data: str, wait_for_receipt: bool = True, time
 
 
 def check_hash_on_chain(record_hash_hex: str) -> bool:
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     contract = _load_contract(w3)
     if contract is None:
         return False
@@ -350,7 +396,7 @@ def check_hash_on_chain(record_hash_hex: str) -> bool:
 
 
 def get_owner_address():
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     contract = _load_contract(w3)
     if contract is None:
         return None
@@ -361,7 +407,7 @@ def add_authorized_address(account_address: str):
     """Call contract.addAuthorized(account_address). Returns tx hash or None if not configured."""
     if not PRIVATE_KEY:
         return None
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -386,7 +432,7 @@ def add_authorized_address(account_address: str):
 def remove_authorized_address(account_address: str):
     if not PRIVATE_KEY:
         return None
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -409,7 +455,7 @@ def remove_authorized_address(account_address: str):
 
 
 def is_authorized_address(account_address: str) -> bool:
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     contract = _load_contract(w3)
     if contract is None:
         return False
@@ -422,7 +468,7 @@ def give_patient_consent(patient_address: str, consent_type: str):
     """Give consent for a patient and consent type. Returns tx hash or None."""
     if not PRIVATE_KEY:
         return None
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -447,7 +493,7 @@ def revoke_patient_consent(patient_address: str, consent_type: str):
     """Revoke consent for a patient and consent type. Returns tx hash or None."""
     if not PRIVATE_KEY:
         return None
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     try:
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     except Exception:
@@ -470,7 +516,7 @@ def revoke_patient_consent(patient_address: str, consent_type: str):
 
 def has_patient_consent(patient_address: str, consent_type: str) -> bool:
     """Check if a patient has given consent for a consent type."""
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = get_w3()
     contract = _load_contract(w3)
     if contract is None:
         return False

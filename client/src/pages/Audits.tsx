@@ -135,23 +135,27 @@ export const Audits: React.FC = () => {
   useEffect(() => {
     fetchAudits();
     fetchTimeline();
-    const wsUrl = import.meta.env.VITE_AUDIT_WS_URL || 'ws://localhost:8000/ws/audits/';
-    try {
-      wsRef.current = new window.WebSocket(wsUrl);
-      wsRef.current.onmessage = () => {
-        fetchAudits();
-        fetchTimeline();
-      };
-      wsRef.current.onerror = (err) => {
-        console.warn('WebSocket connection failed:', err);
-      };
-      wsRef.current.onclose = (evt) => {
-        if (evt.code !== 1000) {
-          console.warn('WebSocket closed unexpectedly:', evt);
-        }
-      };
-    } catch (e) {
-      console.warn('WebSocket setup failed:', e);
+    
+    // WebSocket for real-time updates (optional, not required for functionality)
+    const wsUrl = import.meta.env.VITE_AUDIT_WS_URL;
+    if (wsUrl) {
+      try {
+        wsRef.current = new window.WebSocket(wsUrl);
+        wsRef.current.onmessage = () => {
+          fetchAudits();
+          fetchTimeline();
+        };
+        wsRef.current.onerror = (err) => {
+          console.warn('WebSocket connection failed:', err);
+        };
+        wsRef.current.onclose = (evt) => {
+          if (evt.code !== 1000) {
+            console.warn('WebSocket closed unexpectedly:', evt);
+          }
+        };
+      } catch (e) {
+        console.warn('WebSocket setup failed:', e);
+      }
     }
 
     return () => {
@@ -230,8 +234,7 @@ export const Audits: React.FC = () => {
 
   const openBlockchainExplorer = (txHash: string) => {
     if (!txHash) return;
-    const explorerUrl = `https://etherscan.io/tx/${txHash}`;
-    window.open(explorerUrl, '_blank');
+    alert(`📝 Transaction Hash: ${txHash}\n\n✓ Transaction is on the in-memory eth-tester blockchain.`);
   };
 
   const openIPFSExplorer = (cid: string) => {
@@ -288,6 +291,10 @@ export const Audits: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-blue-500">
           <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Network</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{blockchainStatus.network}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            {blockchainStatus.network?.includes('Memory') && '(In-Memory Test)'}
+            {blockchainStatus.network?.includes('Mainnet') && '(Mainnet)'}
+          </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-purple-500">
           <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Chain ID</p>
@@ -524,7 +531,7 @@ export const Audits: React.FC = () => {
                               onClick={() => openBlockchainExplorer(selectedAudit.tx_hash || '')}
                               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium text-sm whitespace-nowrap"
                             >
-                              View on Etherscan
+                              View Hash
                             </button>
                           </div>
                         </div>
@@ -662,7 +669,7 @@ export const Audits: React.FC = () => {
                           onClick={() => openBlockchainExplorer(detailsModal.tx_hash || '')}
                           className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded"
                         >
-                          🔗 View on Etherscan
+                          🔗 View Hash
                         </button>
                       </div>
                     </div>

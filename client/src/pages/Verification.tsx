@@ -76,13 +76,7 @@ export const Verification = () => {
   };
 
   const openEtherscan = (hash: string) => {
-    const chain = localStorage.getItem('chain_id') || '11155111'; // Sepolia by default
-    let etherscanUrl = 'https://sepolia.etherscan.io';
-    
-    if (chain === '1') etherscanUrl = 'https://etherscan.io';
-    else if (chain === '5') etherscanUrl = 'https://goerli.etherscan.io';
-    
-    window.open(`${etherscanUrl}/tx/${hash}`, '_blank');
+    alert(`📝 Transaction Hash: ${hash}\n\n✓ Transaction is on the in-memory eth-tester blockchain.`);
   };
 
   const copyToClipboard = (text: string) => {

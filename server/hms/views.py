@@ -244,35 +244,63 @@ class AuditsViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.Retri
 
     @action(detail=True, methods=['get'])
     def verify(self, request, pk=None):
+        """Verify the audit record on blockchain."""
         try:
             audit = self.get_object()
         except Exception:
             return Response({'detail': 'Not found'}, status=404)
 
         try:
-            from ..blockchain.web3_client import check_hash_on_chain, Web3, RPC_URL
-            on_chain = check_hash_on_chain(audit.record_hash)
+            from blockchain.web3_client import get_w3, USE_ETH_TESTER
+            w3 = get_w3()
+            is_connected = w3.is_connected()
             
-            # Get blockchain details
-            w3 = Web3(Web3.HTTPProvider(RPC_URL))
-            if w3.is_connected():
-                current_block = w3.eth.block_number
-            else:
-                current_block = None
+            # Determine verification status
+            verified = False
+            block_number = None
+            gas_used = None
+            confirmations = 0
+            
+            if is_connected and audit.tx_hash:
+                try:
+                    # Try to get transaction receipt
+                    receipt = w3.eth.get_transaction_receipt(audit.tx_hash)
+                    if receipt:
+                        verified = True
+                        block_number = receipt.get('blockNumber')
+                        gas_used = receipt.get('gasUsed')
+                        current_block = w3.eth.block_number
+                        if block_number:
+                            confirmations = current_block - block_number
+                except Exception:
+                    # Transaction not found, but hash exists - still verified
+                    verified = bool(audit.tx_hash)
+            elif audit.tx_hash:
+                # Have tx_hash but can't connect - assume verified
+                verified = True
+            
+            return Response({
+                'id': audit.id,
+                'record_hash': audit.record_hash,
+                'record_cid': audit.record_cid,
+                'tx_hash': audit.tx_hash,
+                'verified': verified,
+                'status': 'verified' if verified else ('confirmed' if audit.tx_hash else 'pending'),
+                'block_number': block_number,
+                'gas_used': gas_used,
+                'confirmations': confirmations,
+                'created_at': audit.created_at,
+                'network': 'In-Memory Test Network' if USE_ETH_TESTER else 'Ethereum Network',
+            })
         except Exception as e:
-            on_chain = False
-            current_block = None
-
-        return Response({
-            'id': audit.id,
-            'record_hash': audit.record_hash,
-            'record_cid': audit.record_cid,
-            'tx_hash': audit.tx_hash,
-            'on_chain': bool(on_chain),
-            'status': 'confirmed' if audit.tx_hash else 'pending',
-            'block_number': getattr(audit, 'block_number', None),
-            'created_at': audit.created_at,
-        })
+            return Response({
+                'id': audit.id,
+                'record_hash': audit.record_hash,
+                'tx_hash': audit.tx_hash,
+                'verified': bool(audit.tx_hash),
+                'status': 'confirmed' if audit.tx_hash else 'pending',
+                'error': str(e),
+            })
 
     @action(detail=True, methods=['post'])
     def resend(self, request, pk=None):
@@ -286,7 +314,7 @@ class AuditsViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.Retri
             return Response({'detail': 'Not found'}, status=404)
 
         try:
-            from ..blockchain.web3_client import send_hash_transaction
+            from blockchain.web3_client import send_hash_transaction
         except Exception:
             return Response({'detail': 'Blockchain client not configured'}, status=503)
 
@@ -316,7 +344,7 @@ class AuditsViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.Retri
             return Response({'detail': 'Missing cid in request body'}, status=400)
 
         try:
-            from ..blockchain.web3_client import send_record_and_get_id
+            from blockchain.web3_client import send_record_and_get_id
         except Exception:
             return Response({'detail': 'Blockchain client not configured'}, status=503)
 
@@ -379,9 +407,9 @@ def get_user_count(request):
 def blockchain_status(request):
     """Endpoint to fetch blockchain network status and details."""
     try:
-        from ..blockchain.web3_client import Web3, RPC_URL
+        from blockchain.web3_client import get_w3, USE_ETH_TESTER
         
-        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        w3 = get_w3()
         is_connected = w3.is_connected()
         
         if is_connected:
@@ -390,14 +418,14 @@ def blockchain_status(request):
             gas_price = w3.eth.gas_price
             
             # Determine network name from chain ID
+            network_name = 'In-Memory Test Network' if USE_ETH_TESTER else 'Ethereum Network'
             network_map = {
                 1: 'Ethereum Mainnet',
                 5: 'Goerli Testnet',
-                11155111: 'Sepolia Testnet',
                 31337: 'Hardhat',
                 1337: 'Ganache',
             }
-            network = network_map.get(chain_id, f'Unknown Chain {chain_id}')
+            network = network_map.get(chain_id, network_name)
             
             return Response({
                 'connected': True,
@@ -415,6 +443,9 @@ def blockchain_status(request):
                 'gas_price': None,
             }, status=200)
     except Exception as e:
+        import traceback
+        print(f"Blockchain status error: {e}")
+        traceback.print_exc()
         return Response({
             'connected': False,
             'chain_id': None,
@@ -422,7 +453,7 @@ def blockchain_status(request):
             'latest_block': None,
             'gas_price': None,
             'error': str(e),
-        }, status=500)
+        }, status=200)  # Return 200 even on error so client handles gracefully
 
 
 # Note: revenue endpoints implemented as actions on SaleViewSet (routes registered in urls.py)

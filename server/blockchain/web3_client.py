@@ -164,30 +164,46 @@ def _init_w3():
             eth_tester = EthereumTester()
             w3 = Web3(EthereumTesterProvider(eth_tester))
             # Auto-mine blocks immediately for eth-tester
+            print("Successfully initialized Web3 with eth-tester")
             return w3, True
         except Exception as e:
             print(f"Failed to initialize eth-tester: {e}, falling back to HTTP")
-            return Web3(Web3.HTTPProvider(RPC_URL)), False
+            try:
+                provider = Web3.HTTPProvider(RPC_URL, request_kwargs={'timeout': 5})
+                w3 = Web3(provider)
+                print(f"Initialized Web3 with HTTP provider at {RPC_URL}")
+                return w3, False
+            except Exception as http_err:
+                print(f"Failed to initialize HTTP provider: {http_err}")
+                return None, False
     else:
-        return Web3(Web3.HTTPProvider(RPC_URL)), False
+        try:
+            provider = Web3.HTTPProvider(RPC_URL, request_kwargs={'timeout': 5})
+            w3 = Web3(provider)
+            print(f"Initialized Web3 with HTTP provider at {RPC_URL}")
+            return w3, False
+        except Exception as e:
+            print(f"Failed to initialize HTTP provider: {e}")
+            return None, False
 
 _w3_instance = None
 _using_eth_tester = False
 _eth_tester_account = None
 
 def get_w3():
-    """Get or create Web3 instance."""
+    """Get or create Web3 instance. Returns None if initialization fails."""
     global _w3_instance, _using_eth_tester, _eth_tester_account
     if _w3_instance is None:
         _w3_instance, _using_eth_tester = _init_w3()
         # If using eth-tester, setup a default account
-        if _using_eth_tester:
+        if _w3_instance is not None and _using_eth_tester:
             try:
                 accounts = _w3_instance.eth.accounts
                 if accounts:
                     _eth_tester_account = accounts[0]
                     # Set as default sender
                     _w3_instance.eth.default_account = _eth_tester_account
+                    print(f"Set default account: {_eth_tester_account}")
             except Exception as e:
                 print(f"Warning: Failed to setup eth-tester account: {e}")
     return _w3_instance

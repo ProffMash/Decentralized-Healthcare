@@ -4,7 +4,6 @@ from django import forms
 from django.shortcuts import render, redirect
 from django.urls import path
 from django.contrib import messages
-from blockchain import web3_client
 
 
 @admin.register(OnChainAudit)
@@ -35,6 +34,13 @@ def authorize_address_view(request):
 
 	addr = form.cleaned_data['address']
 	tx = None
+	try:
+		# Import web3 client lazily to avoid heavy imports at module import time
+		from blockchain import web3_client
+	except Exception as e:
+		messages.error(request, f'Blockchain client unavailable: {e}')
+		return redirect('/admin/')
+
 	try:
 		tx = web3_client.add_authorized_address(addr)
 	except Exception as e:

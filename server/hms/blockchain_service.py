@@ -94,10 +94,11 @@ def send_hash_to_blockchain(record_hash: str) -> Optional[str]:
         Transaction hash if successful, None otherwise
     """
     try:
-        from ..blockchain.web3_client import send_hash_transaction
+        from blockchain.web3_client import send_hash_transaction
         return send_hash_transaction(record_hash)
-    except Exception:
+    except Exception as e:
         # Blockchain not configured or unavailable
+        print(f"Blockchain send_hash_transaction error: {e}")
         return None
 
 

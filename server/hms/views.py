@@ -410,30 +410,66 @@ def blockchain_status(request):
         from blockchain.web3_client import get_w3, USE_ETH_TESTER
         
         w3 = get_w3()
-        is_connected = w3.is_connected()
+        
+        # Check if w3 is initialized and try to connect
+        if w3 is None:
+            return Response({
+                'connected': False,
+                'chain_id': None,
+                'network': 'Not Initialized',
+                'latest_block': None,
+                'gas_price': None,
+                'error': 'Web3 instance not initialized',
+            }, status=200)
+        
+        try:
+            is_connected = w3.is_connected()
+        except Exception as conn_err:
+            print(f"Connection check error: {conn_err}")
+            return Response({
+                'connected': False,
+                'chain_id': None,
+                'network': 'Connection Failed',
+                'latest_block': None,
+                'gas_price': None,
+                'error': 'Failed to check connection',
+            }, status=200)
         
         if is_connected:
-            chain_id = w3.eth.chain_id
-            latest_block = w3.eth.block_number
-            gas_price = w3.eth.gas_price
-            
-            # Determine network name from chain ID
-            network_name = 'In-Memory Test Network' if USE_ETH_TESTER else 'Ethereum Network'
-            network_map = {
-                1: 'Ethereum Mainnet',
-                5: 'Goerli Testnet',
-                31337: 'Hardhat',
-                1337: 'Ganache',
-            }
-            network = network_map.get(chain_id, network_name)
-            
-            return Response({
-                'connected': True,
-                'chain_id': chain_id,
-                'network': network,
-                'latest_block': latest_block,
-                'gas_price': str(w3.from_wei(gas_price, 'gwei')),
-            }, status=200)
+            try:
+                chain_id = w3.eth.chain_id
+                latest_block = w3.eth.block_number
+                gas_price = w3.eth.gas_price
+                
+                # Determine network name from chain ID
+                network_name = 'In-Memory Test Network' if USE_ETH_TESTER else 'Ethereum Network'
+                network_map = {
+                    1: 'Ethereum Mainnet',
+                    5: 'Goerli Testnet',
+                    31337: 'Hardhat',
+                    1337: 'Ganache',
+                }
+                network = network_map.get(chain_id, network_name)
+                
+                return Response({
+                    'connected': True,
+                    'chain_id': chain_id,
+                    'network': network,
+                    'latest_block': latest_block,
+                    'gas_price': str(w3.from_wei(gas_price, 'gwei')),
+                }, status=200)
+            except Exception as eth_err:
+                print(f"Blockchain data retrieval error: {eth_err}")
+                import traceback
+                traceback.print_exc()
+                return Response({
+                    'connected': False,
+                    'chain_id': None,
+                    'network': 'Data Error',
+                    'latest_block': None,
+                    'gas_price': None,
+                    'error': 'Failed to retrieve blockchain data',
+                }, status=200)
         else:
             return Response({
                 'connected': False,
@@ -441,7 +477,18 @@ def blockchain_status(request):
                 'network': 'Disconnected',
                 'latest_block': None,
                 'gas_price': None,
+                'error': 'Web3 provider not connected',
             }, status=200)
+    except ImportError as import_err:
+        print(f"Blockchain import error: {import_err}")
+        return Response({
+            'connected': False,
+            'chain_id': None,
+            'network': 'Module Error',
+            'latest_block': None,
+            'gas_price': None,
+            'error': 'Blockchain module not available',
+        }, status=200)
     except Exception as e:
         import traceback
         print(f"Blockchain status error: {e}")

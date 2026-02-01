@@ -47,6 +47,12 @@ export const Audits: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Pagination state
+  const [auditCurrentPage, setAuditCurrentPage] = useState(1);
+  const [timelineCurrentPage, setTimelineCurrentPage] = useState(1);
+  const auditPageSize = 6;
+  const timelinePageSize = 6;
+
   const fetchAudits = async () => {
     setLoading(true);
     try {
@@ -100,15 +106,33 @@ export const Audits: React.FC = () => {
   const fetchBlockchainStatus = async () => {
     try {
       const res = await api.get('/blockchain/status/');
+      
+      // Handle both successful responses and error messages
+      const data = res.data || {};
+      const isConnected = data.connected === true;
+      
       setBlockchainStatus({
-        connected: res.data.connected || false,
-        chainId: res.data.chain_id || 0,
-        latestBlock: res.data.latest_block || 0,
-        gasPrice: res.data.gas_price || '0',
-        network: res.data.network || 'Unknown'
+        connected: isConnected,
+        chainId: data.chain_id || 0,
+        latestBlock: data.latest_block || 0,
+        gasPrice: data.gas_price || '0',
+        network: isConnected ? (data.network || 'Unknown') : (data.network || 'Disconnected')
       });
+      
+      // Log the status for debugging
+      if (!isConnected && data.error) {
+        console.warn('Blockchain not connected:', data.error);
+      }
     } catch (e) {
-      console.warn('Failed to fetch blockchain status:', e);
+      console.error('Failed to fetch blockchain status:', e);
+      // Set disconnect state on network error
+      setBlockchainStatus({
+        connected: false,
+        chainId: 0,
+        latestBlock: 0,
+        gasPrice: '0',
+        network: 'Network Error'
+      });
     }
   };
 
@@ -264,6 +288,79 @@ export const Audits: React.FC = () => {
     }
   };
 
+  // Pagination helpers
+  const getPaginatedAudits = () => {
+    const startIdx = (auditCurrentPage - 1) * auditPageSize;
+    return audits.slice(startIdx, startIdx + auditPageSize);
+  };
+
+  const getPaginatedTimeline = () => {
+    const startIdx = (timelineCurrentPage - 1) * timelinePageSize;
+    return timelineEvents.slice(startIdx, startIdx + timelinePageSize);
+  };
+
+  const totalAuditPages = Math.max(1, Math.ceil(audits.length / auditPageSize));
+  const totalTimelinePages = Math.max(1, Math.ceil(timelineEvents.length / timelinePageSize));
+
+  // Simple pagination footer component
+  const PaginationFooter = ({ 
+    currentPage, 
+    totalPages, 
+    totalItems,
+    pageSize,
+    onPageChange 
+  }: { 
+    currentPage: number; 
+    totalPages: number; 
+    totalItems: number;
+    pageSize: number;
+    onPageChange: (page: number) => void 
+  }) => {
+    if (totalItems === 0) return null;
+    return (
+      <div className="px-6 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Showing {totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalItems)} of {totalItems}
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 rounded-md bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 transition hover:bg-gray-50 dark:hover:bg-gray-600"
+          >
+            Prev
+          </button>
+
+          <div className="flex items-center space-x-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                aria-current={page === currentPage}
+                className={`px-2 py-1 rounded text-sm transition ${
+                  page === currentPage 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 rounded-md bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 transition hover:bg-gray-50 dark:hover:bg-gray-600"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 min-h-screen">
       {/* Header with Blockchain Status */}
@@ -279,10 +376,20 @@ export const Audits: React.FC = () => {
         <div className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${
           blockchainStatus.connected 
             ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+            : blockchainStatus.network === 'Network Error'
+            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
             : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
         }`}>
-          <span className={`w-2 h-2 rounded-full ${blockchainStatus.connected ? 'bg-green-600 animate-pulse' : 'bg-gray-600'}`}></span>
-          {blockchainStatus.connected ? 'Blockchain Connected' : 'Disconnected'}
+          <span className={`w-2 h-2 rounded-full animate-pulse ${
+            blockchainStatus.connected 
+              ? 'bg-green-600' 
+              : blockchainStatus.network === 'Network Error'
+              ? 'bg-red-600'
+              : 'bg-gray-600'
+          }`}></span>
+          {blockchainStatus.connected ? 'Blockchain Connected' : 
+           blockchainStatus.network === 'Network Error' ? 'Network Error' :
+           'Disconnected'}
         </div>
       </div>
 
@@ -294,6 +401,8 @@ export const Audits: React.FC = () => {
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
             {blockchainStatus.network?.includes('Memory') && '(In-Memory Test)'}
             {blockchainStatus.network?.includes('Mainnet') && '(Mainnet)'}
+            {blockchainStatus.network === 'Network Error' && '(Check Server)'}
+            {blockchainStatus.network === 'Disconnected' && '(Not Available)'}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-purple-500">
@@ -338,8 +447,43 @@ export const Audits: React.FC = () => {
           {/* Timeline Tab */}
           {activeTab === 'timeline' && (
             <div>
-              <h3 className="text-lg font-semibold mb-4">Audit Timeline</h3>
-              <AuditTimeline events={timelineEvents} />
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-2">📅 Audit Timeline</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Chronological view of all system activities and medical record modifications
+                </p>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="inline-block">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                  </div>
+                  <p className="mt-4 text-gray-600 dark:text-gray-400">Loading timeline events...</p>
+                </div>
+              ) : timelineEvents.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                  <p className="text-gray-600 dark:text-gray-400">No timeline events found</p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-800 rounded-t-lg p-4">
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      📊 Showing {timelineEvents.length === 0 ? 0 : (timelineCurrentPage - 1) * timelinePageSize + 1} - {Math.min(timelineCurrentPage * timelinePageSize, timelineEvents.length)} of {timelineEvents.length} events
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-b-lg overflow-hidden border border-t-0 border-blue-200 dark:border-blue-700">
+                    <AuditTimeline events={getPaginatedTimeline()} />
+                    <PaginationFooter 
+                      currentPage={timelineCurrentPage}
+                      totalPages={totalTimelinePages}
+                      totalItems={timelineEvents.length}
+                      pageSize={timelinePageSize}
+                      onPageChange={setTimelineCurrentPage}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -347,7 +491,7 @@ export const Audits: React.FC = () => {
           {activeTab === 'onchain' && (
             <div>
               <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-2">On-Chain Audit Records</h3>
+                <h3 className="text-lg font-semibold mb-2">⛓️ On-Chain Audit Records</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   Cryptographic hashes and blockchain transaction details for all medical records
                 </p>
@@ -365,82 +509,125 @@ export const Audits: React.FC = () => {
                   <p className="text-gray-600 dark:text-gray-400">No audit records found</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-900">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Status</th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Record Type</th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Object ID</th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Hash (SHA-256)</th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Transaction</th>
-                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                      {audits.map(audit => (
-                        <tr key={audit.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                            onClick={() => setSelectedAudit(selectedAudit?.id === audit.id ? null : audit)}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(audit.status)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {audit.record_type}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                            #{audit.object_id}
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <code className="bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded font-mono text-xs text-gray-700 dark:text-gray-300 break-all max-w-xs inline-block">
-                              {audit.record_hash.slice(0, 16)}...{audit.record_hash.slice(-8)}
-                            </code>
-                          </td>
-                          <td className="px-6 py-4">
-                            {audit.tx_hash ? (
-                              <code className="bg-blue-50 dark:bg-blue-900 px-3 py-1 rounded font-mono text-xs text-blue-700 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800"
-                                    onClick={(e) => { e.stopPropagation(); openBlockchainExplorer(audit.tx_hash || ''); }}>
-                                {audit.tx_hash.slice(0, 12)}...
-                              </code>
-                            ) : (
-                              <span className="text-gray-400 text-sm">—</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => setDetailsModal(audit)}
-                              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-medium transition"
-                            >
-                              👁️ Details
-                            </button>
-                            <button
-                              onClick={() => verify(audit.id)}
-                              disabled={!!actionLoading[audit.id]}
-                              className={`px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                              {actionLoading[audit.id] === 'verify' ? '...' : '✓ Verify'}
-                            </button>
-                            {!audit.tx_hash && (
-                              <button
-                                onClick={() => resend(audit.id)}
-                                disabled={!!actionLoading[audit.id]}
-                                className={`px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium transition ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
-                              >
-                                {actionLoading[audit.id] === 'resend' ? '...' : '📤 Resend'}
-                              </button>
-                            )}
-                            <button
-                              onClick={() => storeCid(audit.id)}
-                              disabled={!!actionLoading[audit.id]}
-                              className={`px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-medium transition ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                              {actionLoading[audit.id] === 'storeCid' ? '...' : '📦 IPFS'}
-                            </button>
-                          </td>
+                <>
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                      <p className="text-sm text-blue-600 dark:text-blue-300 font-medium">Total Records</p>
+                      <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">{audits.length}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900 dark:to-green-800 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                      <p className="text-sm text-green-600 dark:text-green-300 font-medium">Confirmed</p>
+                      <p className="text-2xl font-bold text-green-900 dark:text-green-100 mt-1">{audits.filter(a => a.status === 'confirmed').length}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900 dark:to-yellow-800 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
+                      <p className="text-sm text-yellow-600 dark:text-yellow-300 font-medium">Pending</p>
+                      <p className="text-2xl font-bold text-yellow-900 dark:text-yellow-100 mt-1">{audits.filter(a => a.status === 'pending').length}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900 dark:to-purple-800 rounded-lg p-4 border border-purple-200 dark:border-purple-700">
+                      <p className="text-sm text-purple-600 dark:text-purple-300 font-medium">With IPFS</p>
+                      <p className="text-2xl font-bold text-purple-900 dark:text-purple-100 mt-1">{audits.filter(a => a.record_cid).length}</p>
+                    </div>
+                  </div>
+
+                  {/* Records Info */}
+                  <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-800 rounded-t-lg p-4">
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      📊 Showing {audits.length === 0 ? 0 : (auditCurrentPage - 1) * auditPageSize + 1} - {Math.min(auditCurrentPage * auditPageSize, audits.length)} of {audits.length} records
+                    </p>
+                  </div>
+
+                  {/* Table */}
+                  <div className="overflow-x-auto rounded-b-lg border border-t-0 border-blue-200 dark:border-blue-700">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Record Type</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Object ID</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Hash (SHA-256)</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Transaction</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {getPaginatedAudits().map(audit => (
+                          <tr key={audit.id} className="hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                              onClick={() => setSelectedAudit(selectedAudit?.id === audit.id ? null : audit)}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {getStatusBadge(audit.status)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                                {audit.record_type}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
+                              #{audit.object_id}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              <code className="bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded font-mono text-xs text-gray-700 dark:text-gray-300 break-all max-w-xs inline-block hover:bg-gray-200 dark:hover:bg-gray-800 transition">
+                                {audit.record_hash.slice(0, 16)}...{audit.record_hash.slice(-8)}
+                              </code>
+                            </td>
+                            <td className="px-6 py-4">
+                              {audit.tx_hash ? (
+                                <code className="bg-blue-50 dark:bg-blue-900 px-3 py-1 rounded font-mono text-xs text-blue-700 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800 transition"
+                                      onClick={(e) => { e.stopPropagation(); openBlockchainExplorer(audit.tx_hash || ''); }}>
+                                  {audit.tx_hash.slice(0, 12)}...
+                                </code>
+                              ) : (
+                                <span className="text-gray-400 text-sm">—</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => setDetailsModal(audit)}
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow"
+                                title="View full details"
+                              >
+                                👁️ Details
+                              </button>
+                              <button
+                                onClick={() => verify(audit.id)}
+                                disabled={!!actionLoading[audit.id]}
+                                className={`px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                title="Verify on blockchain"
+                              >
+                                {actionLoading[audit.id] === 'verify' ? '...' : '✓ Verify'}
+                              </button>
+                              {!audit.tx_hash && (
+                                <button
+                                  onClick={() => resend(audit.id)}
+                                  disabled={!!actionLoading[audit.id]}
+                                  className={`px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                  title="Resend transaction"
+                                >
+                                  {actionLoading[audit.id] === 'resend' ? '...' : '📤 Resend'}
+                                </button>
+                              )}
+                              <button
+                                onClick={() => storeCid(audit.id)}
+                                disabled={!!actionLoading[audit.id]}
+                                className={`px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                title="Store IPFS CID"
+                              >
+                                {actionLoading[audit.id] === 'storeCid' ? '...' : '📦 IPFS'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <PaginationFooter 
+                      currentPage={auditCurrentPage}
+                      totalPages={totalAuditPages}
+                      totalItems={audits.length}
+                      pageSize={auditPageSize}
+                      onPageChange={setAuditCurrentPage}
+                    />
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -449,164 +636,161 @@ export const Audits: React.FC = () => {
           {activeTab === 'blockchain' && (
             <div>
               <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-2">Blockchain Record Details</h3>
+                <h3 className="text-lg font-semibold mb-2">🔍 Blockchain Record Details</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Select a record from the table above to view detailed blockchain information
+                  Select a record from the On-Chain Records table to view detailed blockchain information
                 </p>
               </div>
 
               {selectedAudit ? (
-                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Left Column */}
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Record Type
-                        </label>
-                        <div className="text-lg font-bold text-gray-900 dark:text-white">
-                          {selectedAudit.record_type}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Object ID
-                        </label>
-                        <div className="text-lg font-bold text-gray-900 dark:text-white">
-                          #{selectedAudit.object_id}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Status
-                        </label>
-                        <div>{getStatusBadge(selectedAudit.status)}</div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Created At
-                        </label>
-                        <div className="text-sm text-gray-900 dark:text-white">
-                          {new Date(selectedAudit.created_at).toLocaleString()}
-                        </div>
-                      </div>
+                <div className="space-y-6">
+                  {/* Main Info Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                      <p className="text-xs text-blue-600 dark:text-blue-300 font-semibold uppercase tracking-wide">Record Type</p>
+                      <p className="text-xl font-bold text-blue-900 dark:text-blue-100 mt-2">{selectedAudit.record_type}</p>
                     </div>
-
-                    {/* Right Column */}
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
-                          <span>SHA-256 Hash</span>
-                          <button
-                            onClick={() => copyToClipboard(selectedAudit.record_hash)}
-                            className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600"
-                          >
-                            Copy
-                          </button>
-                        </label>
-                        <code className="block bg-gray-800 dark:bg-gray-950 text-green-400 p-3 rounded font-mono text-xs break-all">
-                          {selectedAudit.record_hash}
-                        </code>
-                      </div>
-
-                      {selectedAudit.tx_hash && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
-                            <span>Transaction Hash</span>
-                            <button
-                              onClick={() => copyToClipboard(selectedAudit.tx_hash || '')}
-                              className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600"
-                            >
-                              Copy
-                            </button>
-                          </label>
-                          <div className="flex gap-2">
-                            <code className="flex-1 bg-blue-900 text-blue-300 p-3 rounded font-mono text-xs break-all">
-                              {selectedAudit.tx_hash}
-                            </code>
-                            <button
-                              onClick={() => openBlockchainExplorer(selectedAudit.tx_hash || '')}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium text-sm whitespace-nowrap"
-                            >
-                              View Hash
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedAudit.record_cid && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
-                            <span>IPFS CID</span>
-                            <button
-                              onClick={() => copyToClipboard(selectedAudit.record_cid || '')}
-                              className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600"
-                            >
-                              Copy
-                            </button>
-                          </label>
-                          <div className="flex gap-2">
-                            <code className="flex-1 bg-amber-900 text-amber-300 p-3 rounded font-mono text-xs break-all">
-                              {selectedAudit.record_cid}
-                            </code>
-                            <button
-                              onClick={() => openIPFSExplorer(selectedAudit.record_cid || '')}
-                              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded font-medium text-sm whitespace-nowrap"
-                            >
-                              View on IPFS
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedAudit.block_number && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            Block Number
-                          </label>
-                          <div className="text-lg font-bold text-gray-900 dark:text-white">
-                            #{selectedAudit.block_number.toLocaleString()}
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedAudit.gas_used && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            Gas Used
-                          </label>
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            {selectedAudit.gas_used.toLocaleString()} units
-                          </div>
-                        </div>
-                      )}
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900 dark:to-purple-800 rounded-lg p-4 border border-purple-200 dark:border-purple-700">
+                      <p className="text-xs text-purple-600 dark:text-purple-300 font-semibold uppercase tracking-wide">Object ID</p>
+                      <p className="text-xl font-bold text-purple-900 dark:text-purple-100 mt-2">#{selectedAudit.object_id}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900 dark:to-green-800 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                      <p className="text-xs text-green-600 dark:text-green-300 font-semibold uppercase tracking-wide">Status</p>
+                      <p className="mt-2">{getStatusBadge(selectedAudit.status)}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900 dark:to-orange-800 rounded-lg p-4 border border-orange-200 dark:border-orange-700">
+                      <p className="text-xs text-orange-600 dark:text-orange-300 font-semibold uppercase tracking-wide">Created</p>
+                      <p className="text-sm font-bold text-orange-900 dark:text-orange-100 mt-2">{new Date(selectedAudit.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
 
-                  {/* Verification Status */}
-                  <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded border-l-4 border-green-500">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">✓ Verification Summary</h4>
-                    <ul className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
-                      <li>✓ Record hash verified on blockchain</li>
-                      <li>✓ Immutable audit trail established</li>
-                      <li>✓ Cryptographic signature secured</li>
-                      <li>{selectedAudit.record_cid ? '✓' : '○'} Content stored on IPFS</li>
-                    </ul>
+                  {/* Hash Details */}
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">🔐 SHA-256 Hash</h4>
+                      <button
+                        onClick={() => copyToClipboard(selectedAudit.record_hash)}
+                        className="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                    <code className="block bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm break-all overflow-x-auto border border-gray-700">
+                      {selectedAudit.record_hash}
+                    </code>
+                  </div>
+
+                  {/* Transaction Details */}
+                  {selectedAudit.tx_hash && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">🔗 Transaction Hash</h4>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => copyToClipboard(selectedAudit.tx_hash || '')}
+                            className="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                          >
+                            📋 Copy
+                          </button>
+                          <button
+                            onClick={() => openBlockchainExplorer(selectedAudit.tx_hash || '')}
+                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition"
+                          >
+                            🔍 View
+                          </button>
+                        </div>
+                      </div>
+                      <code className="block bg-blue-950 text-blue-300 p-4 rounded-lg font-mono text-sm break-all overflow-x-auto border border-blue-900">
+                        {selectedAudit.tx_hash}
+                      </code>
+                    </div>
+                  )}
+
+                  {/* IPFS CID */}
+                  {selectedAudit.record_cid && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">📦 IPFS CID</h4>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => copyToClipboard(selectedAudit.record_cid || '')}
+                            className="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                          >
+                            📋 Copy
+                          </button>
+                          <button
+                            onClick={() => openIPFSExplorer(selectedAudit.record_cid || '')}
+                            className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded transition"
+                          >
+                            🔍 View
+                          </button>
+                        </div>
+                      </div>
+                      <code className="block bg-amber-950 text-amber-300 p-4 rounded-lg font-mono text-sm break-all overflow-x-auto border border-amber-900">
+                        {selectedAudit.record_cid}
+                      </code>
+                    </div>
+                  )}
+
+                  {/* Block and Gas Information */}
+                  {(selectedAudit.block_number || selectedAudit.gas_used) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedAudit.block_number && (
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border border-gray-200 dark:border-gray-700">
+                          <p className="text-xs text-gray-600 dark:text-gray-400 font-semibold uppercase tracking-wide">Block Number</p>
+                          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
+                            #{selectedAudit.block_number.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                      {selectedAudit.gas_used && (
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border border-gray-200 dark:border-gray-700">
+                          <p className="text-xs text-gray-600 dark:text-gray-400 font-semibold uppercase tracking-wide">Gas Used</p>
+                          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
+                            {selectedAudit.gas_used.toLocaleString()} units
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Verification Summary */}
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900 dark:to-emerald-900 rounded-lg p-6 border-l-4 border-green-500">
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <span className="text-xl">✓</span> Verification Summary
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                        <span className="text-green-600">✓</span>
+                        <span>Record hash verified on blockchain</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                        <span className="text-green-600">✓</span>
+                        <span>Immutable audit trail established</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                        <span className="text-green-600">✓</span>
+                        <span>Cryptographic signature secured</span>
+                      </div>
+                      <div className={`flex items-center gap-2 ${selectedAudit.record_cid ? 'text-green-800 dark:text-green-200' : 'text-gray-600 dark:text-gray-400'}`}>
+                        <span>{selectedAudit.record_cid ? '✓' : '○'}</span>
+                        <span>Content stored on IPFS</span>
+                      </div>
+                    </div>
                   </div>
 
                   <button
                     onClick={() => setSelectedAudit(null)}
-                    className="mt-6 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-medium"
+                    className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition shadow"
                   >
-                    Close Details
+                    ◀ Back to Records
                   </button>
                 </div>
               ) : (
-                <div className="text-center py-12 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <p className="text-gray-600 dark:text-gray-400">Click on a record in the table to view blockchain details</p>
+                <div className="text-center py-16 bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                  <div className="text-4xl mb-4">🔍</div>
+                  <p className="text-gray-600 dark:text-gray-400 font-medium">No record selected</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Click on a record in the On-Chain Records table to view detailed blockchain information</p>
                 </div>
               )}
             </div>

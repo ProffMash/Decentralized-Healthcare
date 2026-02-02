@@ -28,8 +28,8 @@ SECRET_KEY = 'django-insecure-l1n+0*hs2n13@3hd0pebzer)liaqs5lhrpnp3$bo10m*dn@_rp
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = [
-    'hospital-ms-9mt5.onrender.com',
-    'hospital-ms-alpha.vercel.app',  # Added the correct frontend domain with typo
+    'decentralized-healthcare-rpmh.onrender.com',
+    'decentralized-healthcare-three.vercel.app',  
     'localhost',
     '127.0.0.1',
 ]
@@ -39,8 +39,8 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
-    'https://hospital-ms-alpha.vercel.app',
-    'https://hospital-ms-9mt5.onrender.com'
+    'https://decentralized-healthcare-three.vercel.app',  
+    'https://decentralized-healthcare-rpmh.onrender.com'
 ]
 
 # Additional CORS settings for preflight requests

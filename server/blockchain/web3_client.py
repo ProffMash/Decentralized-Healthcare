@@ -153,8 +153,9 @@ def _find_deployed_address_file() -> Path | None:
 
 
 DEPLOYED_ADDRESS_FILE = _find_deployed_address_file()
-RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', 'http://127.0.0.1:8545')
+RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', None)
 PRIVATE_KEY = os.environ.get('BLOCKCHAIN_PRIVATE_KEY')
+IS_PRODUCTION = os.environ.get('ENVIRONMENT', '').lower() == 'production'
 
 # Initialize Web3 instance (in-memory if eth-tester available, else HTTP)
 def _init_w3():
@@ -167,24 +168,34 @@ def _init_w3():
             print("Successfully initialized Web3 with eth-tester")
             return w3, True
         except Exception as e:
-            print(f"Failed to initialize eth-tester: {e}, falling back to HTTP")
-            try:
-                provider = Web3.HTTPProvider(RPC_URL, request_kwargs={'timeout': 5})
-                w3 = Web3(provider)
-                print(f"Initialized Web3 with HTTP provider at {RPC_URL}")
-                return w3, False
-            except Exception as http_err:
-                print(f"Failed to initialize HTTP provider: {http_err}")
-                return None, False
-    else:
+            print(f"Failed to initialize eth-tester: {e}")
+            # Fall through to HTTP provider if eth-tester fails
+    
+    # Use HTTP provider if RPC URL is configured
+    if RPC_URL:
         try:
             provider = Web3.HTTPProvider(RPC_URL, request_kwargs={'timeout': 5})
             w3 = Web3(provider)
             print(f"Initialized Web3 with HTTP provider at {RPC_URL}")
             return w3, False
-        except Exception as e:
-            print(f"Failed to initialize HTTP provider: {e}")
+        except Exception as http_err:
+            print(f"Failed to initialize HTTP provider at {RPC_URL}: {http_err}")
             return None, False
+    else:
+        # Production environment without RPC URL configured
+        if IS_PRODUCTION:
+            print("❌ ERROR: BLOCKCHAIN_RPC_URL environment variable not set in production!")
+            print("Please configure a valid blockchain RPC endpoint (e.g., Infura, Alchemy, or a self-hosted node)")
+        else:
+            print("⚠️  WARNING: BLOCKCHAIN_RPC_URL not configured. Using fallback to http://127.0.0.1:8545 for development.")
+            try:
+                provider = Web3.HTTPProvider('http://127.0.0.1:8545', request_kwargs={'timeout': 5})
+                w3 = Web3(provider)
+                print("Initialized Web3 with development HTTP provider at http://127.0.0.1:8545")
+                return w3, False
+            except Exception as e:
+                print(f"Failed to initialize development HTTP provider: {e}")
+        return None, False
 
 _w3_instance = None
 _using_eth_tester = False

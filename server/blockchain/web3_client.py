@@ -157,7 +157,10 @@ RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', None)
 PRIVATE_KEY = os.environ.get('BLOCKCHAIN_PRIVATE_KEY')
 IS_PRODUCTION = os.environ.get('ENVIRONMENT', '').lower() == 'production'
 
-# Initialize Web3 instance (in-memory if eth-tester available, else HTTP)
+# Debug: Log environment setup
+print(f"🔐 PRIVATE_KEY configured: {bool(PRIVATE_KEY)}")
+print(f"🌐 RPC_URL: {RPC_URL}")
+print(f"📍 Production mode: {IS_PRODUCTION}")
 def _init_w3():
     """Initialize Web3 with eth-tester for in-memory blockchain or HTTP provider."""
     if USE_ETH_TESTER:

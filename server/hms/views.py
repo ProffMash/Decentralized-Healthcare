@@ -285,7 +285,7 @@ class AuditsViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.Retri
                 'record_cid': audit.record_cid,
                 'tx_hash': audit.tx_hash,
                 'verified': verified,
-                'status': 'verified' if verified else ('confirmed' if audit.tx_hash else 'pending'),
+                'status': 'verified' if verified else 'confirmed',
                 'block_number': block_number,
                 'gas_used': gas_used,
                 'confirmations': confirmations,
@@ -298,35 +298,19 @@ class AuditsViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.Retri
                 'record_hash': audit.record_hash,
                 'tx_hash': audit.tx_hash,
                 'verified': bool(audit.tx_hash),
-                'status': 'confirmed' if audit.tx_hash else 'pending',
+                'status': 'confirmed',
                 'error': str(e),
             })
 
     @action(detail=True, methods=['post'])
     def resend(self, request, pk=None):
-        """Attempt to resend the stored hash to the blockchain and update tx_hash.
-
-        This is useful when the initial save couldn't send a transaction (no config) or it failed.
+        """Resend endpoint disabled in read-only mode.
+        
+        The blockchain is configured for reading only - transaction sending is not available.
         """
-        try:
-            audit = self.get_object()
-        except Exception:
-            return Response({'detail': 'Not found'}, status=404)
-
-        try:
-            from blockchain.web3_client import send_hash_transaction
-        except Exception:
-            return Response({'detail': 'Blockchain client not configured'}, status=503)
-
-        try:
-            tx = send_hash_transaction(audit.record_hash)
-            if tx:
-                audit.tx_hash = tx
-                audit.save(update_fields=['tx_hash'])
-                return Response({'tx_hash': tx})
-            return Response({'detail': 'Transaction not sent (no private key configured?)'}, status=400)
-        except Exception as e:
-            return Response({'detail': f'Error sending transaction: {str(e)}'}, status=500)
+        return Response({
+            'detail': 'Blockchain is in read-only mode. Transaction sending is disabled.',
+        }, status=403)
 
     @action(detail=True, methods=['post'])
     def store_cid(self, request, pk=None):

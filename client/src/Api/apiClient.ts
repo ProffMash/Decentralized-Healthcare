@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// const API_BASE = 'https://hospital-ms-9mt5.onrender.com/api/';
+// const API_BASE = 'https://decentralized-healthcare-rpmh.onrender.com/api/';
 const API_BASE = 'http://localhost:8000/api/';
 
 const api = axios.create({

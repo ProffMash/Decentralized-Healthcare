@@ -1,5 +1,6 @@
 
 import { useEffect, useState, useRef } from 'react';
+import { Eye, CheckCircle, Copy, AlertCircle, Check, ExternalLink } from 'lucide-react';
 import api from '../Api/apiClient';
 import AuditTimeline from '../components/shared/AuditTimeline';
 import type { AuditEvent } from '../components/shared/AuditTimeline';
@@ -84,18 +85,14 @@ export const Audits: React.FC = () => {
       const deduped = dedupeByHash(data as any[]);
       const auditData = deduped.map((a: any) => ({
         ...a,
-        status: a.tx_hash ? 'confirmed' : 'pending',
+        status: 'confirmed',
       })) as Audit[];
       
       setAudits(auditData);
       
       // Update blockchain status
       await fetchBlockchainStatus();
-      
-      // Poll for status updates every 10 seconds
-      pollIntervalRef.current = setInterval(() => {
-        pollTransactionStatus(auditData);
-      }, 10000);
+
     } catch (e) {
       console.error('Failed to load audits', e);
     } finally {
@@ -133,24 +130,6 @@ export const Audits: React.FC = () => {
         gasPrice: '0',
         network: 'Network Error'
       });
-    }
-  };
-
-  const pollTransactionStatus = async (auditList: Audit[]) => {
-    // Check pending transactions for confirmation
-    const pendingAudits = auditList.filter(a => a.status === 'pending' && a.tx_hash);
-    
-    for (const audit of pendingAudits) {
-      try {
-        const res = await api.get(`/audits/${audit.id}/`);
-        if (res.data.tx_hash !== audit.tx_hash) {
-          // Transaction hash changed, refresh audits
-          await fetchAudits();
-          break;
-        }
-      } catch (e) {
-        // Silently handle errors
-      }
     }
   };
 
@@ -222,29 +201,6 @@ export const Audits: React.FC = () => {
     }
   };
 
-  const resend = async (id: number) => {
-    setActionLoading(prev => ({ ...prev, [id]: 'resend' }));
-    try {
-      const res = await api.post(`/audits/${id}/resend/`);
-      alert(`Resend tx: ${res?.data?.tx_hash || '—'}`);
-      await fetchAudits();
-    } catch (e: any) {
-      console.error('resend failed', e);
-      if (e?.response?.status === 503) {
-        alert('Service unavailable: The backend is not running or the endpoint is down.');
-      } else {
-        alert(e?.response?.data?.detail || 'Resend failed');
-      }
-    } finally {
-      setActionLoading(prev => ({ ...prev, [id]: null }));
-    }
-  };
-
-  const openBlockchainExplorer = (txHash: string) => {
-    if (!txHash) return;
-    alert(`📝 Transaction Hash: ${txHash}\n\n✓ Transaction is on the in-memory eth-tester blockchain.`);
-  };
-
   const openIPFSExplorer = (cid: string) => {
     if (!cid) return;
     const ipfsUrl = `https://ipfs.io/ipfs/${cid}`;
@@ -257,16 +213,16 @@ export const Audits: React.FC = () => {
   };
 
   const getStatusBadge = (status: string | undefined) => {
-    const baseClass = 'px-3 py-1 rounded-full text-xs font-semibold';
+    const baseClass = 'px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit';
     switch (status) {
       case 'confirmed':
-        return <span className={`${baseClass} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>✓ Confirmed</span>;
+        return <span className={`${baseClass} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}><CheckCircle size={14} /> Confirmed</span>;
       case 'pending':
-        return <span className={`${baseClass} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>⏳ Pending</span>;
+        return <span className={`${baseClass} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}><AlertCircle size={14} /> Pending</span>;
       case 'verified':
-        return <span className={`${baseClass} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`}>✔ Verified</span>;
+        return <span className={`${baseClass} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`}><CheckCircle size={14} /> Verified</span>;
       case 'failed':
-        return <span className={`${baseClass} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`}>✗ Failed</span>;
+        return <span className={`${baseClass} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`}><AlertCircle size={14} /> Failed</span>;
       default:
         return <span className={`${baseClass} bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200`}>—</span>;
     }
@@ -521,7 +477,6 @@ export const Audits: React.FC = () => {
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Record Type</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Object ID</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Hash (SHA-256)</th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Transaction</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
@@ -545,42 +500,23 @@ export const Audits: React.FC = () => {
                                 {audit.record_hash.slice(0, 16)}...{audit.record_hash.slice(-8)}
                               </code>
                             </td>
-                            <td className="px-6 py-4">
-                              {audit.tx_hash ? (
-                                <code className="bg-blue-50 dark:bg-blue-900 px-3 py-1 rounded font-mono text-xs text-blue-700 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800 transition"
-                                      onClick={(e) => { e.stopPropagation(); openBlockchainExplorer(audit.tx_hash || ''); }}>
-                                  {audit.tx_hash.slice(0, 12)}...
-                                </code>
-                              ) : (
-                                <span className="text-gray-400 text-sm">—</span>
-                              )}
-                            </td>
+
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setDetailsModal(audit)}
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow"
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow flex items-center gap-1"
                                 title="View full details"
                               >
-                                👁️ Details
+                                <Eye size={14} /> Details
                               </button>
                               <button
                                 onClick={() => verify(audit.id)}
                                 disabled={!!actionLoading[audit.id]}
-                                className={`px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                className={`px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow flex items-center gap-1 ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 title="Verify on blockchain"
                               >
-                                {actionLoading[audit.id] === 'verify' ? '...' : '✓ Verify'}
+                                {actionLoading[audit.id] === 'verify' ? '...' : <><Check size={14} /> Verify</>}
                               </button>
-                              {!audit.tx_hash && (
-                                <button
-                                  onClick={() => resend(audit.id)}
-                                  disabled={!!actionLoading[audit.id]}
-                                  className={`px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium transition shadow-sm hover:shadow ${actionLoading[audit.id] ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                  title="Resend transaction"
-                                >
-                                  {actionLoading[audit.id] === 'resend' ? '...' : '📤 Resend'}
-                                </button>
-                              )}
                             </td>
                           </tr>
                         ))}
@@ -632,9 +568,9 @@ export const Audits: React.FC = () => {
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">SHA-256 Hash</label>
                     <button
                       onClick={() => copyToClipboard(detailsModal.record_hash)}
-                      className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600"
+                      className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600 flex items-center gap-1"
                     >
-                      📋 Copy
+                      <Copy size={14} /> Copy
                     </button>
                   </div>
                   <code className="block bg-gray-900 text-green-400 p-3 rounded font-mono text-xs break-all overflow-x-auto">
@@ -650,15 +586,9 @@ export const Audits: React.FC = () => {
                       <div className="space-x-2">
                         <button
                           onClick={() => copyToClipboard(detailsModal.tx_hash || '')}
-                          className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600"
+                          className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600 flex items-center gap-1"
                         >
-                          📋 Copy
-                        </button>
-                        <button
-                          onClick={() => openBlockchainExplorer(detailsModal.tx_hash || '')}
-                          className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded"
-                        >
-                          🔗 View Hash
+                          <Copy size={14} /> Copy
                         </button>
                       </div>
                     </div>
@@ -676,15 +606,15 @@ export const Audits: React.FC = () => {
                       <div className="space-x-2">
                         <button
                           onClick={() => copyToClipboard(detailsModal.record_cid || '')}
-                          className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600"
+                          className="text-xs bg-gray-300 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-400 dark:hover:bg-gray-600 flex items-center gap-1"
                         >
-                          📋 Copy
+                          <Copy size={14} /> Copy
                         </button>
                         <button
                           onClick={() => openIPFSExplorer(detailsModal.record_cid || '')}
-                          className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded"
+                          className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded flex items-center gap-1"
                         >
-                          🔗 View on IPFS
+                          <ExternalLink size={14} /> View on IPFS
                         </button>
                       </div>
                     </div>

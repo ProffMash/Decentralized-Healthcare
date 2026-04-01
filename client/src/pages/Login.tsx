@@ -72,7 +72,7 @@ export const Login: React.FC = () => {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl mb-4 shadow-lg">
               <Activity className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Hospital Management</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">DECENTRALISED HOSPITAL SYSTEM</h1>
             <p className="text-gray-600 dark:text-gray-400 mt-2">Sign in to your account</p>
           </div>
 
@@ -128,7 +128,7 @@ export const Login: React.FC = () => {
 
           {/* Footer */}
           <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            <p>&copy; 2025 Hospital Management System. All rights reserved.</p>
+            <p>&copy; 2026 Decentralised Hospital System. All rights reserved.</p>
           </div>
         </div>
       </div>

@@ -229,7 +229,7 @@ export const MedicineInventory: React.FC = () => {
       'Category': medicine.category,
       'Description': medicine.description || '',
       'Stock': medicine.stock,
-      'Price': `$${(parseFloat(medicine.price) || 0).toFixed(2)}`,
+      'Price': `Ksh ${(parseFloat(medicine.price) || 0).toFixed(2)}`,
       'Added On': formatDate(medicine.created_at)
     }));
 
@@ -276,7 +276,7 @@ export const MedicineInventory: React.FC = () => {
       header: 'Pricing',
       render: (_: any, medicine: ApiMedicine) => (
         <div>
-          <p className="font-medium text-gray-900 dark:text-white">${(parseFloat(medicine.price) || 0).toFixed(2)}</p>
+          <p className="font-medium text-gray-900 dark:text-white">Ksh {(parseFloat(medicine.price) || 0).toFixed(2)}</p>
         </div>
       )
     },
@@ -533,7 +533,7 @@ export const MedicineInventory: React.FC = () => {
               </div>
               <div>
                 <span className="text-gray-500 dark:text-gray-400">Unit Price:</span>
-                <span className="ml-2 font-medium text-gray-900 dark:text-white">${(parseFloat(selectedMedicine?.price || '0')).toFixed(2)}</span>
+                <span className="ml-2 font-medium text-gray-900 dark:text-white">Ksh {(parseFloat(selectedMedicine?.price || '0')).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -554,7 +554,7 @@ export const MedicineInventory: React.FC = () => {
             <div className="flex justify-between items-center">
               <span className="font-medium text-gray-900 dark:text-white">Total Amount:</span>
                 <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                ${((parseFloat(selectedMedicine?.price || '0')) * saleFormData.quantity).toFixed(2)}
+                Ksh {((parseFloat(selectedMedicine?.price || '0')) * saleFormData.quantity).toFixed(2)}
               </span>
             </div>
           </div>

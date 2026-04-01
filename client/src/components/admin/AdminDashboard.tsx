@@ -124,7 +124,7 @@ export const AdminDashboard: React.FC = () => {
         const medicine = medicines.find(m => m.id === sale.medicineId);
         activities.push({
           type: 'sale',
-          message: `${medicine?.name || 'Medicine'} sold - $${sale.totalPrice.toFixed(2)}`,
+          message: `${medicine?.name || 'Medicine'} sold - Ksh ${sale.totalPrice.toFixed(2)}`,
           time: new Date(sale.saleDate).toLocaleTimeString(),
           color: 'text-emerald-600'
         });
@@ -176,7 +176,7 @@ export const AdminDashboard: React.FC = () => {
                     {stat.title}
                   </p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {stat.isRevenue ? `$${Number(stat.value ?? 0).toFixed(2)}` : stat.value}
+                    {stat.isRevenue ? `Ksh ${Number(stat.value ?? 0).toFixed(2)}` : stat.value}
                   </p>
                   {stat.change && (
                     <p className="text-xs text-green-600 flex items-center">

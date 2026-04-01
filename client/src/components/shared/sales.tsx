@@ -72,7 +72,7 @@ export const SalesList: React.FC = () => {
         'Date': formatDate(s.created_at || (s as any).date || ''),
         'Medicine': md?.name || String(s.medicine),
         'Quantity': s.quantity,
-        'Total': `$${(parseFloat(String(s.total_amount)) || 0).toFixed(2)}`,
+        'Total': `Ksh ${(parseFloat(String(s.total_amount)) || 0).toFixed(2)}`,
       };
     });
     exportData(dataToExport, 'sales-report', format, 'Sales Report');
@@ -104,17 +104,17 @@ export const SalesList: React.FC = () => {
       header: 'Price',
       render: (_: any, row: Sale) => {
         const md = (row as any).medicine_detail;
-        if (md?.price) return `$${(parseFloat(String(md.price)) || 0).toFixed(2)}`;
+        if (md?.price) return `Ksh ${(parseFloat(String(md.price)) || 0).toFixed(2)}`;
         const qty = Number(row.quantity) || 0;
         const total = parseFloat(String(row.total_amount)) || 0;
         const unit = qty > 0 ? total / qty : total;
-        return `$${unit.toFixed(2)}`;
+        return `Ksh ${unit.toFixed(2)}`;
       },
     },
     {
       key: 'total',
       header: 'Total',
-      render: (_: any, row: Sale) => `$${(parseFloat(String(row.total_amount)) || 0).toFixed(2)}`,
+      render: (_: any, row: Sale) => `Ksh ${(parseFloat(String(row.total_amount)) || 0).toFixed(2)}`,
     },
     {
       key: 'date',
